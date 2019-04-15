@@ -34,7 +34,7 @@ def group(ref_block, neighborhood, thr, limit):
     mask = d <= thr
     idx_y, idx_x = np.where(mask)
     grp = d[idx_y, idx_x]
-    argsort = np.argsort(-grp)
+    argsort = np.argsort(grp)
     argsort = argsort[:min(len(argsort), limit)]
     idx_x = idx_x[argsort]
     idx_y = idx_y[argsort]
@@ -45,15 +45,15 @@ def bm3d(im,
          sigma,
          N1_ht=8,
          N2_ht=16,
-         Nstep_ht=3,
-         N_S_ht=16,
+         Nstep_ht=6,
+         N_S_ht=12,
          lambda2d=0,
          lambda3d=2.7,
          tau_match_ht=2500,
          N1_wie=8,
-         N2_wie=32,
-         Nstep_wie=3,
-         N_S_wie=16,
+         N2_wie=16,
+         Nstep_wie=5,
+         N_S_wie=12,
          tau_match_wie=400):
 
     blocks_noisy = block_dct(im, bsize=N1_ht)
@@ -64,6 +64,7 @@ def bm3d(im,
     blocks_thr = block_dct(thr_im, bsize=N1_ht)
     step1_agg = np.zeros_like(im)
     step1_weights = np.zeros_like(im)
+    _ys = set()#debug
     for y in range(0, bh, Nstep_ht):
         for x in range(0, bw, Nstep_ht):
             ref = blocks_thr[y, x]
@@ -85,8 +86,10 @@ def bm3d(im,
             idx_x = idx_x + Sx_min
             idx_y = idx_y + Sy_min
             for i in range(len(grp)):
+                _ys.add((idx_y[i],idx_x[i]))#debug
                 step1_agg[idx_y[i]:idx_y[i]+N1_ht, idx_x[i]:idx_x[i]+N1_ht] += grp[i]
                 step1_weights[idx_y[i]:idx_y[i]+N1_ht, idx_x[i]:idx_x[i]+N1_ht] += weights
+    print(len(_ys))#debug
     basic_im = step1_agg / (step1_weights + 10e-8)
 
     blocks_noisy = block_dct(im, bsize=N1_wie)
@@ -134,12 +137,14 @@ def bm3d(im,
 
 if __name__ == '__main__':
     gt_im = utils.load_image_to_array('images/lena.tif', size=[256, 256])
-    # utils.array_to_image(gt_im, clip=True).save('lena'+'.jpg')
-    for x in [0, 10, 100, 1000]:
-        noisy = utils.add_gaussian_noise(gt_im, 20)
-        utils.array_to_image(noisy, clip=True).save('noisy'+'.jpg')
-        im = bm3d(noisy, sigma=20, lambda2d=x, lambda3d=x)[1]
-        utils.array_to_image(im, clip=True).save('lambda_'+str(x)+'.jpg')
+    noisy = utils.add_gaussian_noise(gt_im, 20)
+    utils.array_to_image(noisy, clip=True).save('noisy'+'.jpg')
+    im = bm3d(noisy, sigma=20)
+    basic_im, final_im = im
+    print('PSNR for basic estimate is %.1f' % (utils.psnr(gt_im, basic_im)))
+    print('PSNR for final estimate is %.1f' % (utils.psnr(gt_im, final_im)))
+    utils.array_to_image(basic_im, clip=True).save('bm3d_basic.jpg')
+    utils.array_to_image(final_im, clip=True).save('bm3d_final.jpg')
     quit()
     for x in [8, 12, 16, 32]:
         im = bm3d(noisy, sigma=20, N2_ht=x, N2_wie=x)
